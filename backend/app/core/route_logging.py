@@ -18,8 +18,8 @@ F = TypeVar('F', bound=Callable[..., Any])
 class RouteLogger:
     """路由日志记录器。"""
     
-    def __init__(self, logger_name: str = "route"):
-        self.logger = get_structured_logger(f"app.{logger_name}")
+    def __init__(self, logger_name: str = "app.route"):
+        self.logger = get_structured_logger(logger_name)
         # 敏感字段列表
         self.sensitive_fields = {
             'password', 'token', 'secret', 'key', 'authorization',
@@ -51,19 +51,77 @@ class RouteLogger:
         try:
             if isinstance(value, BaseModel):
                 return value.model_dump()
-            elif hasattr(value, '__dict__'):
-                return str(value)
             elif isinstance(value, (str, int, float, bool, type(None))):
                 return value
             elif isinstance(value, (list, tuple)):
                 return [self._serialize_value(item) for item in value]
             elif isinstance(value, dict):
                 return {k: self._serialize_value(v) for k, v in value.items()}
+            elif self._is_response_object(value):
+                # 处理FastAPI Response对象
+                return self._serialize_response(value)
+            elif hasattr(value, '__dict__'):
+                # 对于其他有__dict__的对象，尝试序列化其属性
+                try:
+                    obj_dict = {}
+                    for k, v in value.__dict__.items():
+                        if not k.startswith('_'):  # 跳过私有属性
+                            obj_dict[k] = self._serialize_value(v)
+                    return obj_dict if obj_dict else f"<{type(value).__name__}>"
+                except:
+                    return f"<{type(value).__name__}>"
             else:
                 return str(value)
         except Exception:
-            return str(value)
-    
+            return f"<{type(value).__name__}>"
+
+    def _is_response_object(self, value: Any) -> bool:
+        """检查是否是Response对象。"""
+        return (
+            hasattr(value, 'status_code') and
+            hasattr(value, 'headers') and
+            (hasattr(value, 'body') or hasattr(value, 'content'))
+        )
+
+    def _serialize_response(self, response: Any) -> Dict[str, Any]:
+        """序列化Response对象。"""
+        try:
+            result = {
+                "type": type(response).__name__,
+                "status_code": getattr(response, 'status_code', None),
+                "headers": dict(getattr(response, 'headers', {})),
+            }
+
+            # 尝试获取响应体内容
+            if hasattr(response, 'body'):
+                body = response.body
+                if isinstance(body, bytes):
+                    try:
+                        # 尝试解码为JSON
+                        import json
+                        body_str = body.decode('utf-8')
+                        if body_str.strip().startswith(('{', '[')):
+                            result["body"] = json.loads(body_str)
+                        else:
+                            result["body"] = body_str
+                    except:
+                        result["body"] = f"<bytes: {len(body)} bytes>"
+                else:
+                    result["body"] = str(body)
+            elif hasattr(response, 'content'):
+                content = response.content
+                if isinstance(content, (str, dict, list)):
+                    result["content"] = content
+                else:
+                    result["content"] = str(content)
+
+            return result
+        except Exception as e:
+            return {
+                "type": type(response).__name__,
+                "error": f"序列化失败: {str(e)}"
+            }
+
     def _extract_route_info(self, func: Callable) -> Dict[str, Any]:
         """提取路由函数信息。"""
         return {
@@ -155,14 +213,19 @@ class RouteLogger:
                             "operation": "route_complete",
                             "is_async": True,
                         }
-                        
+
                         if include_timing:
                             complete_log_data["execution_time"] = f"{execution_time:.3f}s"
-                        
+
+                        # 添加入参信息（如果启用）
+                        if include_args and parameters:
+                            complete_log_data["input_parameters"] = parameters
+
+                        # 添加出参信息（如果启用）
                         if include_result:
                             serialized_result = self._serialize_value(result)
                             filtered_result = self._filter_sensitive_data(serialized_result)
-                            complete_log_data["result"] = filtered_result
+                            complete_log_data["output_result"] = filtered_result
                         
                         # 记录函数完成
                         self.logger.log(
@@ -186,6 +249,10 @@ class RouteLogger:
                             "exception_type": type(e).__name__,
                             "exception_message": str(e),
                         }
+
+                        # 添加入参信息到错误日志（便于调试）
+                        if include_args and parameters:
+                            error_log_data["input_parameters"] = parameters
                         
                         # 记录函数异常
                         self.logger.error(

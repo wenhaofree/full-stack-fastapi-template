@@ -56,10 +56,10 @@ class ColoredConsoleFormatter(logging.Formatter):
             log_format = "%(asctime)s | %(levelname)-8s | %(trace_id)s | %(name)s | %(message)s"
         else:
             log_format = "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
-        
+
         formatter = logging.Formatter(log_format, datefmt="%Y-%m-%d %H:%M:%S")
         formatted = formatter.format(record)
-        
+
         # 添加颜色
         if self.use_colors:
             level_color = self.COLORS.get(record.levelname, '')
@@ -68,7 +68,32 @@ class ColoredConsoleFormatter(logging.Formatter):
                     record.levelname,
                     f"{level_color}{record.levelname}{self.COLORS['RESET']}"
                 )
-        
+
+        # 添加路由相关的详细信息（仅对路由日志）
+        if hasattr(record, 'input_parameters') or hasattr(record, 'output_result'):
+            details = []
+
+            # 添加入参信息
+            if hasattr(record, 'input_parameters') and record.input_parameters:
+                params_str = str(record.input_parameters)
+                if len(params_str) > 200:
+                    params_str = params_str[:200] + "..."
+                details.append(f"📥 入参: {params_str}")
+
+            # 添加出参信息
+            if hasattr(record, 'output_result') and record.output_result is not None:
+                result_str = str(record.output_result)
+                if len(result_str) > 200:
+                    result_str = result_str[:200] + "..."
+                details.append(f"📤 出参: {result_str}")
+
+            # 添加执行时间
+            if hasattr(record, 'execution_time'):
+                details.append(f"⏱️  耗时: {record.execution_time}")
+
+            if details:
+                formatted += "\n    " + " | ".join(details)
+
         return formatted
 
 
