@@ -1,3 +1,5 @@
+"""Test configuration and fixtures."""
+
 from collections.abc import Generator
 
 import pytest
@@ -7,7 +9,8 @@ from sqlmodel import Session, delete
 from app.core.config import settings
 from app.core.db import engine, init_db
 from app.main import app
-from app.models import Item, User
+from app.models.item import Item
+from app.models.user import User
 from app.tests.utils.user import authentication_token_from_email
 from app.tests.utils.utils import get_superuser_token_headers
 

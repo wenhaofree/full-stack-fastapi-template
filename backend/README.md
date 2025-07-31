@@ -1,5 +1,28 @@
 # FastAPI Project - Backend
 
+## 🏗️ 项目结构 (已重构)
+
+本项目已按照现代化 FastAPI 最佳实践进行重构，采用分层架构设计：
+
+```
+app/
+├── models/         # 数据库模型
+├── schemas/        # API 数据结构
+├── services/       # 业务逻辑层
+├── routes/         # 路由定义
+├── dependencies/   # 依赖注入
+├── exceptions/     # 异常处理
+├── middleware/     # 中间件
+├── core/          # 核心配置
+└── main.py        # 应用入口
+```
+
+## 📚 开发指南
+
+- **新手指南**: 查看 [QUICK_START.md](./QUICK_START.md) 快速上手
+- **详细文档**: 查看 [DEVELOPMENT_GUIDE.md](./DEVELOPMENT_GUIDE.md) 了解完整开发流程
+- **项目结构**: 了解重构后的模块化架构设计
+
 ## Requirements
 
 * [Docker](https://www.docker.com/).
@@ -27,7 +50,17 @@ $ source .venv/bin/activate
 
 Make sure your editor is using the correct Python virtual environment, with the interpreter at `backend/.venv/bin/python`.
 
-Modify or add SQLModel models for data and SQL tables in `./backend/app/models.py`, API endpoints in `./backend/app/api/`, CRUD (Create, Read, Update, Delete) utils in `./backend/app/crud.py`.
+## 🚀 开发新功能
+
+重构后的项目结构更加清晰，开发新功能请遵循以下步骤：
+
+1. **创建数据库模型** - 在 `app/models/` 目录
+2. **定义 API Schemas** - 在 `app/schemas/` 目录
+3. **实现业务逻辑** - 在 `app/services/` 目录
+4. **创建路由** - 在 `app/routes/` 目录
+5. **注册路由** - 在 `app/routes/api.py` 中
+
+详细步骤请参考 [DEVELOPMENT_GUIDE.md](./DEVELOPMENT_GUIDE.md)。
 
 ## VS Code
 
