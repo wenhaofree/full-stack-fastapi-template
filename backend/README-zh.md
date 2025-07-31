@@ -9,6 +9,7 @@ source .venv/bin/activate
 vim .env # 修改数据库密码等配置
 python app/initial_data.py
 python verify_initial_data.py # 验证数据是否初始化成功
+python verify_documentation.py # 验证文档是否齐全
 
 ```
 

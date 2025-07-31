@@ -9,10 +9,10 @@ def check_documentation():
     print("📚 验证项目文档...")
     
     docs = [
-        ("PROJECT_OVERVIEW.md", "项目总览"),
-        ("DEVELOPMENT_GUIDE.md", "开发指南"),
-        ("QUICK_START.md", "快速开始"),
-        ("ARCHITECTURE.md", "架构文档"),
+        ("docs/PROJECT_OVERVIEW.md", "项目总览"),
+        ("docs/DEVELOPMENT_GUIDE.md", "开发指南"),
+        ("docs/QUICK_START.md", "快速开始"),
+        ("docs/ARCHITECTURE.md", "架构文档"),
         ("README.md", "项目说明"),
     ]
     
