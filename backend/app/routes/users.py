@@ -165,6 +165,7 @@ async def update_password(
 
 
 @router.get("/{user_id}")
+@log_route_debug(include_args=False, include_result=True, include_timing=True)
 async def read_user_by_id(
     user_id: uuid.UUID,
     current_user: CurrentUser,
