@@ -38,6 +38,18 @@ class Settings(BaseSettings):
     FRONTEND_HOST: str = "http://localhost:5173"
     ENVIRONMENT: Literal["local", "staging", "production"] = "local"
 
+    # Logging Configuration
+    # 使用四个核心日志级别：DEBUG(开发调试) / INFO(正常流程) / WARNING(小异常) / ERROR(逻辑错误)
+    LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+    LOG_REQUEST_DETAILS: bool = False
+    LOG_FUNCTION_PARAMS: bool = False
+    # 日志输出格式：console(控制台) / json(JSON格式) / both(两者)
+    LOG_FORMAT: Literal["console", "json", "both"] = "console"
+    # 日志文件轮转配置
+    LOG_FILE_ENABLED: bool = True
+    LOG_FILE_MAX_SIZE: int = 10  # MB
+    LOG_FILE_BACKUP_COUNT: int = 7
+
     BACKEND_CORS_ORIGINS: Annotated[
         list[AnyUrl] | str, BeforeValidator(parse_cors)
     ] = []

@@ -5,8 +5,9 @@ from fastapi import FastAPI
 from fastapi.routing import APIRoute
 
 from app.core.config import settings
-from app.core.logging import setup_logging
+from app.core.logger_config import setup_professional_logging
 from app.middleware import (
+    setup_access_log_middleware,
     setup_cors_middleware,
     setup_error_middleware,
     setup_logging_middleware,
@@ -21,8 +22,8 @@ def custom_generate_unique_id(route: APIRoute) -> str:
 
 def create_application() -> FastAPI:
     """Create and configure the FastAPI application."""
-    # Setup logging
-    setup_logging()
+    # Setup professional logging
+    setup_professional_logging()
 
     # Initialize Sentry if configured
     if settings.SENTRY_DSN and settings.ENVIRONMENT != "local":
@@ -37,7 +38,7 @@ def create_application() -> FastAPI:
 
     # Setup middleware
     setup_cors_middleware(app)
-    setup_logging_middleware(app)
+    setup_access_log_middleware(app)  # 专业的访问日志
     setup_error_middleware(app)
 
     # Include API router
