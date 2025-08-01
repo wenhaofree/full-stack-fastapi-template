@@ -1,6 +1,7 @@
 """User related schemas for API requests and responses."""
 
 import uuid
+from datetime import datetime
 from typing import List, Optional
 
 from pydantic import EmailStr
@@ -48,6 +49,9 @@ class UpdatePassword(SQLModel):
 class UserPublic(UserBase):
     """Properties to return via API, id is always required."""
     id: uuid.UUID
+    created_at: datetime
+    updated_at: datetime
+    deleted_at: Optional[datetime] = None
 
 
 class UsersPublic(SQLModel):

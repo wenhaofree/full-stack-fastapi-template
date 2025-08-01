@@ -39,20 +39,28 @@ async def read_users(
     current_user: Annotated[User, Depends(get_current_active_superuser)],
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(10, ge=1, le=100, description="每页数量"),
+    include_deleted: bool = Query(False, description="是否包含已删除的用户"),
 ):
     """获取用户列表（仅超级管理员）"""
-    
+
     # 计算分页参数
     skip = (page - 1) * page_size
-    
-    # 获取总数
+
+    # 构建查询条件
     count_statement = select(func.count()).select_from(User)
+    statement = select(User)
+
+    if not include_deleted:
+        count_statement = count_statement.where(User.deleted_at.is_(None))
+        statement = statement.where(User.deleted_at.is_(None))
+
+    # 获取总数
     total = session.exec(count_statement).one()
-    
+
     # 获取用户列表
-    statement = select(User).offset(skip).limit(page_size)
+    statement = statement.offset(skip).limit(page_size)
     users = session.exec(statement).all()
-    
+
     # 转换为公开格式
     user_list = [UserPublic.model_validate(user) for user in users]
 
@@ -61,7 +69,7 @@ async def read_users(
         total=total,
         page=page,
         page_size=page_size,
-        message="获取用户列表成功"
+        message=f"获取用户列表成功{'（包含已删除用户）' if include_deleted else ''}"
     )
 
 
@@ -236,23 +244,73 @@ async def delete_user(
     user_id: uuid.UUID,
     current_user: Annotated[User, Depends(get_current_active_superuser)],
 ):
-    """删除用户（仅超级管理员）"""
-    
-    user = user_service.get(session=session, id=user_id)
+    """软删除用户（仅超级管理员）"""
+
+    user = user_service.get(session=session, id=user_id, include_deleted=False)
     if not user:
         raise ResponseException(
             code=BusinessCode.USER_NOT_FOUND,
-            message="用户不存在"
+            message="用户不存在或已被删除"
         )
-    
+
     # 不能删除自己
     if user.id == current_user.id:
         raise ResponseException(
             code=BusinessCode.OPERATION_FAILED,
             message="不能删除自己的账户"
         )
-    
-    # 删除用户
-    user_service.delete(session=session, id=user_id)
-    
+
+    # 软删除用户
+    user_service.soft_delete(session=session, id=user_id)
+
     return deleted_response(message="用户删除成功")
+
+
+@router.post("/{user_id}/restore")
+async def restore_user(
+    session: SessionDep,
+    user_id: uuid.UUID,
+    current_user: Annotated[User, Depends(get_current_active_superuser)],
+):
+    """恢复已删除的用户（仅超级管理员）"""
+
+    user = user_service.restore(session=session, id=user_id)
+    if not user:
+        raise ResponseException(
+            code=BusinessCode.USER_NOT_FOUND,
+            message="用户不存在或未被删除"
+        )
+
+    user_public = UserPublic.model_validate(user)
+    return success_response(
+        data=user_public.model_dump(mode='json'),
+        message="用户恢复成功"
+    )
+
+
+@router.delete("/{user_id}/permanent")
+async def permanently_delete_user(
+    session: SessionDep,
+    user_id: uuid.UUID,
+    current_user: Annotated[User, Depends(get_current_active_superuser)],
+):
+    """永久删除用户（仅超级管理员，谨慎使用）"""
+
+    user = user_service.get(session=session, id=user_id, include_deleted=True)
+    if not user:
+        raise ResponseException(
+            code=BusinessCode.USER_NOT_FOUND,
+            message="用户不存在"
+        )
+
+    # 不能删除自己
+    if user.id == current_user.id:
+        raise ResponseException(
+            code=BusinessCode.OPERATION_FAILED,
+            message="不能删除自己的账户"
+        )
+
+    # 永久删除用户
+    user_service.delete(session=session, id=user_id)
+
+    return deleted_response(message="用户永久删除成功")

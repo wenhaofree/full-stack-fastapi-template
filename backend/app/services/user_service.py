@@ -7,18 +7,22 @@ from sqlmodel import Session, select
 from app.core.security import get_password_hash, verify_password
 from app.models.user import User
 from app.schemas.user import UserCreate, UserUpdate
-from .base import BaseService
+from .base import SoftDeleteService
 
 
-class UserService(BaseService[User, UserCreate, UserUpdate]):
-    """User service with business logic."""
+class UserService(SoftDeleteService[User, UserCreate, UserUpdate]):
+    """User service with business logic and soft delete functionality."""
 
     def __init__(self):
         super().__init__(User)
 
-    def get_by_email(self, session: Session, *, email: str) -> User | None:
-        """Get user by email address."""
+    def get_by_email(self, session: Session, *, email: str, include_deleted: bool = False) -> User | None:
+        """Get user by email address, optionally including deleted users."""
         statement = select(User).where(User.email == email)
+
+        if not include_deleted:
+            statement = statement.where(User.deleted_at.is_(None))
+
         return session.exec(statement).first()
 
     def create(self, session: Session, *, obj_in: UserCreate) -> User:
@@ -57,8 +61,8 @@ class UserService(BaseService[User, UserCreate, UserUpdate]):
         return db_obj
 
     def authenticate(self, session: Session, *, email: str, password: str) -> User | None:
-        """Authenticate user with email and password."""
-        user = self.get_by_email(session=session, email=email)
+        """Authenticate user with email and password. Only active (non-deleted) users can authenticate."""
+        user = self.get_by_email(session=session, email=email, include_deleted=False)
         if not user:
             return None
         if not verify_password(password, user.hashed_password):
