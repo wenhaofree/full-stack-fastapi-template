@@ -27,6 +27,7 @@ python app/tests/integration/verify_documentation.py # 验证文档是否齐全
 10. 异步任务与事件解耦
 11. 统一分页规范	page/limit/total/default size 等结构一致-待验证
 12. 版本控制	API 使用 /v1/ 路由，支持未来版本演进-待验证
+13. 时间字段增加✅
 
 
 🚀 实施优先级建议

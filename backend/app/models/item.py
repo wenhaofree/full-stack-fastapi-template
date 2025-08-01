@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING, Optional
 
 from sqlmodel import Field, Relationship, SQLModel
 
+from .base import SoftDeleteModel
+
 if TYPE_CHECKING:
     from .user import User
 
@@ -15,11 +17,10 @@ class ItemBase(SQLModel):
     description: Optional[str] = Field(default=None, max_length=255)
 
 
-class Item(ItemBase, table=True):
-    """Item database model."""
+class Item(ItemBase, SoftDeleteModel, table=True):
+    """Item database model with soft delete functionality."""
     __tablename__ = "item"  # Explicitly set table name
 
-    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     owner_id: uuid.UUID = Field(
         foreign_key="user.id", nullable=False, ondelete="CASCADE"
     )

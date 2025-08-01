@@ -10,6 +10,7 @@ from app.dependencies.database import SessionDep
 from app.core.constants import BusinessCode
 from app.models import Item
 from app.schemas import ItemCreate, ItemPublic, ItemUpdate
+from app.services.item_service import item_service
 from app.utils.response import (
     ResponseException,
     created_response,
@@ -30,6 +31,7 @@ async def read_items(
     current_user: CurrentUser,
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(10, ge=1, le=100, description="每页数量"),
+    include_deleted: bool = Query(False, description="是否包含已删除的物品"),
 ):
     """获取物品列表"""
 
@@ -38,25 +40,18 @@ async def read_items(
 
     if current_user.is_superuser:
         # 超级管理员可以查看所有物品
-        count_statement = select(func.count()).select_from(Item)
-        total = session.exec(count_statement).one()
-        statement = select(Item).offset(skip).limit(page_size)
-        items = session.exec(statement).all()
+        total = item_service.get_total_count(session=session, include_deleted=include_deleted)
+        items = item_service.get_multi(session=session, skip=skip, limit=page_size, include_deleted=include_deleted)
     else:
         # 普通用户只能查看自己的物品
-        count_statement = (
-            select(func.count())
-            .select_from(Item)
-            .where(Item.owner_id == current_user.id)
+        total = item_service.get_count_by_owner(session=session, owner_id=current_user.id, include_deleted=include_deleted)
+        items = item_service.get_multi_by_owner(
+            session=session,
+            owner_id=current_user.id,
+            skip=skip,
+            limit=page_size,
+            include_deleted=include_deleted
         )
-        total = session.exec(count_statement).one()
-        statement = (
-            select(Item)
-            .where(Item.owner_id == current_user.id)
-            .offset(skip)
-            .limit(page_size)
-        )
-        items = session.exec(statement).all()
 
     # 转换为公开格式
     item_list = [ItemPublic.model_validate(item) for item in items]
@@ -66,7 +61,7 @@ async def read_items(
         total=total,
         page=page,
         page_size=page_size,
-        message="获取物品列表成功"
+        message=f"获取物品列表成功{'（包含已删除物品）' if include_deleted else ''}"
     )
 
 
@@ -77,6 +72,7 @@ async def read_my_items(
     current_user: CurrentUser,
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(10, ge=1, le=100, description="每页数量"),
+    include_deleted: bool = Query(False, description="是否包含已删除的物品"),
 ):
     """获取当前用户的物品列表"""
 
@@ -84,20 +80,19 @@ async def read_my_items(
     skip = (page - 1) * page_size
 
     # 获取当前用户的物品
-    count_statement = (
-        select(func.count())
-        .select_from(Item)
-        .where(Item.owner_id == current_user.id)
+    total = item_service.get_count_by_owner(
+        session=session,
+        owner_id=current_user.id,
+        include_deleted=include_deleted
     )
-    total = session.exec(count_statement).one()
 
-    statement = (
-        select(Item)
-        .where(Item.owner_id == current_user.id)
-        .offset(skip)
-        .limit(page_size)
+    items = item_service.get_multi_by_owner(
+        session=session,
+        owner_id=current_user.id,
+        skip=skip,
+        limit=page_size,
+        include_deleted=include_deleted
     )
-    items = session.exec(statement).all()
 
     # 转换为公开格式
     item_list = [ItemPublic.model_validate(item) for item in items]
@@ -204,13 +199,13 @@ async def update_item(
 async def delete_item(
     session: SessionDep, current_user: CurrentUser, id: uuid.UUID
 ):
-    """删除物品"""
+    """软删除物品"""
 
-    item = session.get(Item, id)
+    item = item_service.get(session=session, id=id, include_deleted=False)
     if not item:
         raise ResponseException(
             code=BusinessCode.RESOURCE_NOT_FOUND,
-            message=f"物品 {id} 不存在"
+            message=f"物品 {id} 不存在或已被删除"
         )
 
     # 权限检查：超级管理员或物品所有者
@@ -223,10 +218,69 @@ async def delete_item(
     # 保存物品信息用于返回
     item_title = item.title
 
-    # 删除物品
-    session.delete(item)
-    session.commit()
+    # 软删除物品
+    item_service.soft_delete(session=session, id=id)
 
     return deleted_response(
         message=f"物品 '{item_title}' 删除成功"
+    )
+
+
+@router.post("/{id}/restore")
+# @log_route_debug(include_args=True, include_result=True, include_timing=True)  # 暂时禁用
+async def restore_item(
+    session: SessionDep, current_user: CurrentUser, id: uuid.UUID
+):
+    """恢复已删除的物品"""
+
+    item = item_service.restore(session=session, id=id)
+    if not item:
+        raise ResponseException(
+            code=BusinessCode.RESOURCE_NOT_FOUND,
+            message=f"物品 {id} 不存在或未被删除"
+        )
+
+    # 权限检查：超级管理员或物品所有者
+    if not current_user.is_superuser and (item.owner_id != current_user.id):
+        raise ResponseException(
+            code=BusinessCode.PERMISSION_DENIED,
+            message="没有权限恢复此物品"
+        )
+
+    item_public = ItemPublic.model_validate(item)
+    return success_response(
+        data=item_public.model_dump(mode='json'),
+        message=f"物品 '{item.title}' 恢复成功"
+    )
+
+
+@router.delete("/{id}/permanent")
+# @log_route_debug(include_args=True, include_result=True, include_timing=True)  # 暂时禁用
+async def permanently_delete_item(
+    session: SessionDep, current_user: CurrentUser, id: uuid.UUID
+):
+    """永久删除物品（谨慎使用）"""
+
+    item = item_service.get(session=session, id=id, include_deleted=True)
+    if not item:
+        raise ResponseException(
+            code=BusinessCode.RESOURCE_NOT_FOUND,
+            message=f"物品 {id} 不存在"
+        )
+
+    # 权限检查：超级管理员或物品所有者
+    if not current_user.is_superuser and (item.owner_id != current_user.id):
+        raise ResponseException(
+            code=BusinessCode.PERMISSION_DENIED,
+            message="没有权限永久删除此物品"
+        )
+
+    # 保存物品信息用于返回
+    item_title = item.title
+
+    # 永久删除物品
+    item_service.delete(session=session, id=id)
+
+    return deleted_response(
+        message=f"物品 '{item_title}' 永久删除成功"
     )
