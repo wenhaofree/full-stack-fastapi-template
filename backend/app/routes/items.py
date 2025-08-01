@@ -19,13 +19,13 @@ from app.utils.response import (
     success_response,
     updated_response,
 )
-# from app.core.route_logging import log_route_debug, log_route_info  # 暂时禁用
+from app.core.route_logging import log_route_debug, log_route_info  # 暂时禁用
 
 router = APIRouter()
 
 
 @router.get("/")
-# @log_route_debug(include_args=True, include_result=True, include_timing=True)  # 暂时禁用
+@log_route_debug(include_args=True, include_result=True, include_timing=True)  # 暂时禁用
 async def read_items(
     session: SessionDep,
     current_user: CurrentUser,

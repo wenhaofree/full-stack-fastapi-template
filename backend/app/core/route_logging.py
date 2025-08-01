@@ -49,6 +49,10 @@ class RouteLogger:
     def _serialize_value(self, value: Any) -> Any:
         """序列化值为可JSON化的格式。"""
         try:
+            # 检查是否是数据库相关对象，直接跳过
+            if self._is_database_object(value):
+                return f"<{type(value).__name__}>"
+
             if isinstance(value, BaseModel):
                 return value.model_dump()
             elif isinstance(value, (str, int, float, bool, type(None))):
@@ -74,6 +78,41 @@ class RouteLogger:
                 return str(value)
         except Exception:
             return f"<{type(value).__name__}>"
+
+    def _is_database_object(self, value: Any) -> bool:
+        """检查是否是数据库相关对象。"""
+        # 检查类型名称
+        type_name = type(value).__name__
+        module_name = getattr(type(value), '__module__', '')
+
+        # 数据库会话对象 - 更精确的检查
+        if 'Session' in type_name and ('sqlmodel' in module_name or 'sqlalchemy' in module_name):
+            # 确保不是普通的类名包含Session的对象
+            if hasattr(value, 'bind') and hasattr(value, 'execute') and hasattr(value, 'commit'):
+                return True
+
+        # SQLAlchemy 引擎和连接对象
+        if any(keyword in type_name.lower() for keyword in ['engine', 'connection', 'transaction']):
+            if 'sqlalchemy' in module_name:
+                return True
+
+        # 检查是否有数据库会话的特征属性（更精确的检查）
+        if (hasattr(value, 'bind') and hasattr(value, 'execute') and
+            hasattr(value, 'commit') and hasattr(value, 'rollback')):
+            return True
+
+        # 检查是否是 SQLAlchemy 的核心对象，但排除应用层的 Schema 对象
+        if hasattr(value, '_sa_class_manager'):
+            # 这通常是数据库模型实例
+            return True
+
+        # 检查模块路径，排除应用层的模型和 Schema
+        if 'sqlalchemy' in module_name and 'app.' not in module_name:
+            # 这是 SQLAlchemy 内部对象
+            if any(attr in dir(value) for attr in ['_sa_instance_state', '_sa_adapter']):
+                return True
+
+        return False
 
     def _is_response_object(self, value: Any) -> bool:
         """检查是否是Response对象。"""
@@ -137,17 +176,24 @@ class RouteLogger:
             sig = inspect.signature(func)
             bound_args = sig.bind(*args, **kwargs)
             bound_args.apply_defaults()
-            
+
             # 序列化参数
             parameters = {}
             for name, value in bound_args.arguments.items():
-                # 跳过Request和Response对象
+                # 跳过Request、Response和数据库对象
                 if isinstance(value, (Request, Response)):
                     parameters[name] = f"<{type(value).__name__}>"
+                elif self._is_database_object(value):
+                    parameters[name] = f"<{type(value).__name__}>"
                 else:
-                    serialized_value = self._serialize_value(value)
-                    parameters[name] = self._filter_sensitive_data(serialized_value)
-            
+                    try:
+                        serialized_value = self._serialize_value(value)
+                        parameters[name] = self._filter_sensitive_data(serialized_value)
+                    except Exception as param_error:
+                        # 如果序列化单个参数失败，记录错误但继续处理其他参数
+                        self.logger.debug(f"序列化参数 {name} 失败: {param_error}")
+                        parameters[name] = f"<{type(value).__name__}:序列化失败>"
+
             return parameters
         except Exception as e:
             self.logger.warning(f"提取函数参数失败: {e}")
